@@ -581,8 +581,7 @@ imgui.OnFrame(
 
             imgui.Checkbox("Wall Hack??", ignoreWalls)
             imgui.SameLine()
-    if imgui.Button("Save Config", imgui.ImVec2(110,24)) then saveConfig()() end
-
+    if imgui.Button("Save Config", imgui.ImVec2(110,24)) then saveConfig() end
             addAdjust("MaxDistance", maxDistance, 5.0, 10.0, 500.0, "Distance %.0f")
             addAdjust("GlobalX", globalX, 1.0, -200, 200, "Position X %.1f")
             addAdjust("GlobalY", globalY, 1.0, -200, 200, "Position Y %.1f")
