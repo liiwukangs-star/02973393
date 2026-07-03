@@ -123,7 +123,7 @@ imgui.OnInitialize(function()
 end)
 
 
-local window = imgui.new.bool(true)
+local window = imgui.new.bool(false)
 
 local widgetLabels = {
     ATTACK          = "Adjust Attack",
