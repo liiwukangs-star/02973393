@@ -171,56 +171,22 @@ function main()
 end
 
 imgui.OnFrame(
+    function() return window[0] end,
     function()
-        return window[0]
-    end,
-    function()
-        imgui.SetNextWindowSize(imgui.ImVec2(199, 0), imgui.Cond.FirstUseEver)
+        imgui.SetNextWindowSize(imgui.ImVec2(350, 400), imgui.Cond.FirstUseEver)
+        imgui.Begin("AutoLifefoot Settings", window)
 
-        if imgui.Begin("Auto Lifefoot", window,
-            imgui.WindowFlags.NoCollapse + imgui.WindowFlags.AlwaysAutoResize + imgui.WindowFlags.NoScrollbar) then
+        imgui.Checkbox("Enable Main",         EnableMain)
+        imgui.Checkbox("Use Bullet Sync",     UseBulletSync)
+        imgui.Checkbox("Use Give Damage",     UseGiveDamage)
+        imgui.Checkbox("Enable Weapon Reset", EnableWeaponReset)
+        imgui.SliderFloat("Sprint Speed",     SprintSpeed,    0.1, 5.0)
+        imgui.SliderInt("Reset Duration",     ResetDuration,  100, 5000)
+        imgui.SliderInt("Restore Delay",      RestoreDelay,   0,   2000)
 
-            local url = "https://youtube.com/@deprauu"
-            local windowWidth = imgui.GetWindowSize().x
-            local textWidth = imgui.CalcTextSize(url).x
-            local offsetX = 47
-
-            imgui.SetCursorPosX((windowWidth - textWidth) / 2 + offsetX)
-
-            imgui.SetWindowFontScale(0.7)
-            imgui.TextColored(imgui.ImVec4(1, 1, 1, 1), url)
-            imgui.SetWindowFontScale(1.0)
-
-            if imgui.IsItemClicked() then
-                openLink(url)
-            end
-
-            imgui.Checkbox("Enable", EnableMain)
-
-            if EnableMain[0] then
-                if imgui.Checkbox("BulletSync", UseBulletSync) then
-                    if UseBulletSync[0] then
-                        UseGiveDamage[0] = false
-                    end
-                end
-
-                if imgui.Checkbox("GiveDamage", UseGiveDamage) then
-                    if UseGiveDamage[0] then
-                        UseBulletSync[0] = false
-                    end
-                end
-
-                imgui.Checkbox("AutoSwitch", EnableWeaponReset)
-
-                imgui.PushItemWidth(250)
-                imgui.SliderInt("##ResetDuration", ResetDuration, 0, 10000, "Reset - %d")
-
-                if EnableWeaponReset[0] then
-                    imgui.SliderInt("##RestoreDelay", RestoreDelay, 0, 10000, "Switch - %d")
-                end
-
-                imgui.PopItemWidth()
-            end
+        imgui.Separator()
+        if imgui.Button("Save", imgui.ImVec2(imgui.GetContentRegionAvail().x, 30)) then
+            saveset()
         end
 
         imgui.End()
