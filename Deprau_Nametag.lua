@@ -2,18 +2,25 @@ script_name("Custom Nametag")
 script_author('https://youtube.com/@deprauu')
 script_description('cmd /.cn')
 
-local ffi    = require("ffi")
-local g7a    = ffi.load("GTASA")
-local imgui  = require("mimgui")
-local s4e    = require("samp.events")
-local cfg    = require("var_")
+local ffi = require("ffi")
+local gta = ffi.load("GTASA")
+local imgui = require("mimgui")
+local ev = require 'samp.events'
+local inicfg = require 'inicfg'
 
-local a0k = true
+local fontSize = 13
+local font = renderCreateFont("Arial", fontSize, 0x4)
 
 ffi.cdef[[
-typedef struct { unsigned char r, g, b, a; } CRGBA;
+typedef struct {
+    unsigned char r, g, b, a;
+} CRGBA;
+
 typedef unsigned short GxtChar;
-typedef struct { float left, bottom, right, top; } CRect;
+
+typedef struct {
+    float left, bottom, right, top;
+} CRect;
 
 void _ZN5CFont12SetFontStyleEh(unsigned char style);
 void _ZN5CFont8SetScaleEf(float fHeight);
@@ -25,210 +32,494 @@ void _ZN5CFont12SetDropColorE5CRGBA(CRGBA* dropcolor);
 void _ZN5CFont8SetColorE5CRGBA(CRGBA* color);
 void _ZN5CFont11PrintStringEffPt(float x, float y, GxtChar* pCharacters);
 void _ZN5CFont16RenderFontBufferEv();
-
-typedef struct { float x, y, z; } RwV3d;
-void _ZN4CPed15GetBonePositionER5RwV3djb(void* thiz, RwV3d* posn, uint32_t bone, bool calledFromCam);
-
-void* _Z13RwTextureReadPKcS0_(const char* name, const char* mask);
-typedef struct RwRaster RwRaster;
 typedef struct {
-    RwRaster*    raster;
-    void*        dict;
-    void*        lnext;
-    void*        lprev;
-    unsigned int refCount;
-    char         name[32];
-    char         mask[32];
-    unsigned int filterAddressing;
-    int          pad;
-} RwTexture;
-typedef struct { RwTexture* m_pTexture; } CSprite2d;
-void _ZN9CSprite2dC1Ev(CSprite2d* self);
-void _ZN9CSprite2d14SetRenderStateEv(CSprite2d* self);
-void _ZN9CSprite2d4DrawERK5CRectRK5CRGBA(CSprite2d* self, CRect* rect, CRGBA* col);
-void _ZN9CSprite2d18RenderVertexBufferEv(CSprite2d* self);
+    float x,y,z;
+} RwV3d;
 
-void _ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
-    float x, float y, unsigned short w, unsigned char h,
-    float value, signed char increase, unsigned char legend,
-    unsigned char border, CRGBA* c, CRGBA* c2
+void _ZN4CPed15GetBonePositionER5RwV3djb(
+    void* thiz,
+    RwV3d* posn,
+    uint32_t bone,
+    bool calledFromCam
+);
+void _ZN7CSprite18RenderOneXLUSpriteEfffffhhhsfhhhff(
+    float, float, float, float, float,
+    unsigned char, unsigned char, unsigned char,
+    short,
+    float,
+    unsigned char, unsigned char, unsigned char,
+    float, float
 );
 
+void _ZN9CSprite2d4DrawEffffRK5CRGBA(
+    void*, float, float, float, float, CRGBA*
+);
+
+void _ZN17CWidgetPlayerInfo14DrawWeaponIconEP4CPed5CRectf(
+    void*, void*, CRect, float
+);
+
+void _ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
+    float x, float y,
+    unsigned short w,
+    unsigned char h,
+    float value,
+    signed char increase,
+    unsigned char legend,
+    unsigned char border,
+    CRGBA* c,
+    CRGBA* c2
+);
+
+extern void* _ZN4CHud7SpritesE;
 extern bool _ZN6CTimer11m_UserPauseE;
 ]]
 
-local b3t = {
-    {0,'fist'},{1,'BRASSKNUCKLEicon'},{2,'golfclubicon'},{3,'nitestickicon'},
-    {4,'knifecuricon'},{5,'baticon'},{6,'shovelicon'},{7,'poolcueicon'},
-    {8,'katanaicon'},{9,'chnsawicon'},{10,'gun_dildo1icon'},{11,'gun_dildo2icon'},
-    {12,'gun_vibe1icon'},{13,'gun_vibe2icon'},{14,'floweraicon'},{15,'gun_caneicon'},
-    {16,'grenadeicon'},{17,'teargasicon'},{18,'molotovicon'},{22,'colt45icon'},
-    {23,'silencedicon'},{24,'desert_eagleicon'},{25,'chromegunicon'},{26,'sawnofficon'},
-    {27,'shotgspaicon'},{28,'micro_uziicon'},{29,'mp5lngicon'},{30,'ak47icon'},
-    {31,'M4icon'},{32,'tec9icon'},{33,'cuntgunicon'},{34,'SNIPERicon'},
-    {35,'rocketlaicon'},{36,'heatseekicon'},{37,'flameicon'},{38,'minigunicon'},
-    {39,'satchelicon'},{40,'bombicon'},{41,'SPRAYCANicon'},{42,'fire_exicon'},
-    {43,'cameraicon'},{44,'nvgogglesicon'},{45,'irgogglesicon'},{46,'gun_paraicon'},
-}
-
-local v2p = {}
-local k1l = false
-
-local function e5r()
-    if k1l then return end
-    for _, x9 in ipairs(b3t) do
-        local m4d = x9[1]
-        local t8n = x9[2]
-        local r3w = g7a._Z13RwTextureReadPKcS0_(t8n, nil)
-        if r3w ~= nil then
-            local p6s = ffi.new("CSprite2d")
-            g7a._ZN9CSprite2dC1Ev(p6s)
-            p6s.m_pTexture = ffi.cast("RwTexture*", r3w)
-            v2p[m4d] = p6s
-        end
+local function getBonePos(ped, bone)
+    local pedPtr = ffi.cast("void*", getCharPointer(ped))
+    if pedPtr == nil then
+        return nil
     end
-    k1l = true
+
+    local pos = ffi.new("RwV3d[1]")
+
+    gta._ZN4CPed15GetBonePositionER5RwV3djb(
+        pedPtr,
+        pos,
+        bone,
+        false
+    )
+
+    return pos[0].x, pos[0].y, pos[0].z
 end
 
-local function q8i(m4d, wx, wy, w, h)
-    local p6s = v2p[m4d]
-    if not p6s then return end
-    local c9a = ffi.new("CRGBA",
-        math.floor(cfg.c0l[0]*255), math.floor(cfg.c0l[1]*255),
-        math.floor(cfg.c0l[2]*255), math.floor(cfg.c0l[3]*255))
-    local r3c = ffi.new("CRect", wx - w/2, wy + h/2, wx + w/2, wy - h/2)
-    g7a._ZN9CSprite2d14SetRenderStateEv(p6s)
-    g7a._ZN9CSprite2d4DrawERK5CRectRK5CRGBA(p6s, r3c, c9a)
-    g7a._ZN9CSprite2d18RenderVertexBufferEv(p6s)
-end
 
-local function u6b(ped, b0n)
-    local p7r = ffi.cast("void*", getCharPointer(ped))
-    if p7r == nil then return nil end
-    local v3d = ffi.new("RwV3d[1]")
-    g7a._ZN4CPed15GetBonePositionER5RwV3djb(p7r, v3d, b0n, false)
-    return v3d[0].x, v3d[0].y, v3d[0].z
-end
+local new = imgui.new
+local window = new.bool(true)
+local globalX = new.float(-11.650)
+local globalY = new.float(9.709)
+local weaponOffsetX = ffi.new("float[1]", -32.687)
+local weaponOffsetY = ffi.new("float[1]", -51.524)
+local weaponScale   = ffi.new("float[1]", 1.289)
+local nameOffsetX   = ffi.new("float[1]", -11.650)
+local nameOffsetY   = ffi.new("float[1]", -64.078)
+local nameScale     = ffi.new("float[1]", 0.456)
+local hpOffsetX     = ffi.new("float[1]", -13.850)
+local hpOffsetY     = ffi.new("float[1]", -44.660)
+local hpWidthScale  = ffi.new("float[1]", 59.272)
+local hpHeightScale = ffi.new("float[1]", 6.757)
+local arOffsetX     = ffi.new("float[1]", -13.850)
+local arOffsetY     = ffi.new("float[1]", -54.369)
+local arWidthScale  = ffi.new("float[1]", 59.272)
+local arHeightScale = ffi.new("float[1]", 6.757)
+local fontStyle = imgui.new.int(3)
+local fontEdge = imgui.new.int(1)
+local iconSize = ffi.new("float[1]", 28)
+local justify = new.int(0)
+local ignoreWalls = new.bool(false)
+local maxDistance = ffi.new("float[1]", 150.0)
+local hpCol = new.float[4](1.0, 0.84, 0.0, 1.0) -- gold
+local hpBg  = new.float[4](0.0, 0.0, 0.0, 0.7)
+local showIcon = new.bool(true)
+local showNick = new.bool(true)
+local showBar  = new.bool(true)
+local useServerNickColor = imgui.new.bool(true)
+local color = new.float[4](0.8, 0.8, 0.8, 1.0)
+local arCol = new.float[4](0.8, 0.8, 0.8, 1.0)
+local arBg  = new.float[4](0.0, 0.0, 0.0, 0.7)
 
-local function z1p()
-    return g7a._ZN6CTimer11m_UserPauseE or isPauseMenuActive()
-end
+local json = require("json")
 
-local function y4g(str)
+local configPath = "nametag_deprau.json"
+
+local function saveConfig()
+    local cfg = {
+        globalX = globalX[0],
+        globalY = globalY[0],
+
+        weaponOffsetX = weaponOffsetX[0],
+        weaponOffsetY = weaponOffsetY[0],
+        weaponScale = weaponScale[0],
+
+        nameOffsetX = nameOffsetX[0],
+        nameOffsetY = nameOffsetY[0],
+        nameScale = nameScale[0],
+
+        hpOffsetX = hpOffsetX[0],
+        hpOffsetY = hpOffsetY[0],
+        hpWidthScale = hpWidthScale[0],
+        hpHeightScale = hpHeightScale[0],
+
+        arOffsetX = arOffsetX[0],
+        arOffsetY = arOffsetY[0],
+        arWidthScale = arWidthScale[0],
+        arHeightScale = arHeightScale[0],
+
+        fontStyle = fontStyle[0],
+        fontEdge = fontEdge[0],
+        iconSize = iconSize[0],
+        justify = justify[0],
+
+        ignoreWalls = ignoreWalls[0],
+        maxDistance = maxDistance[0],
+
+        showIcon = showIcon[0],
+        showNick = showNick[0],
+        showBar = showBar[0],
+        useServerNickColor = useServerNickColor[0],
+
+        color = {
+            color[0], color[1], color[2], color[3]
+        },
+
+        hpCol = {
+            hpCol[0], hpCol[1], hpCol[2], hpCol[3]
+        },
+
+        hpBg = {
+            hpBg[0], hpBg[1], hpBg[2], hpBg[3]
+        },
+
+        arCol = {
+            arCol[0], arCol[1], arCol[2], arCol[3]
+        },
+
+        arBg = {
+            arBg[0], arBg[1], arBg[2], arBg[3]
+        }
+    }
+
+    local file = io.open(configPath, "w")
+    if file then
+        file:write(json.encode(cfg))
+        file:close()
+
+        sampAddChatMessage("[Nametag] Config saved successfully.", -1)
+    else
+        sampAddChatMessage("[Nametag] Failed to save config.", 0xFF0000)
+    end
+end
+local function loadConfig()
+    local file = io.open(configPath, "r")
+    if not file then return end
+
+    local data = json.decode(file:read("*a"))
+    file:close()
+
+    if not data then return end
+
+    globalX[0] = data.globalX or globalX[0]
+    globalY[0] = data.globalY or globalY[0]
+
+    weaponOffsetX[0] = data.weaponOffsetX or weaponOffsetX[0]
+    weaponOffsetY[0] = data.weaponOffsetY or weaponOffsetY[0]
+    weaponScale[0] = data.weaponScale or weaponScale[0]
+
+    nameOffsetX[0] = data.nameOffsetX or nameOffsetX[0]
+    nameOffsetY[0] = data.nameOffsetY or nameOffsetY[0]
+    nameScale[0] = data.nameScale or nameScale[0]
+
+    hpOffsetX[0] = data.hpOffsetX or hpOffsetX[0]
+    hpOffsetY[0] = data.hpOffsetY or hpOffsetY[0]
+    hpWidthScale[0] = data.hpWidthScale or hpWidthScale[0]
+    hpHeightScale[0] = data.hpHeightScale or hpHeightScale[0]
+
+    arOffsetX[0] = data.arOffsetX or arOffsetX[0]
+    arOffsetY[0] = data.arOffsetY or arOffsetY[0]
+    arWidthScale[0] = data.arWidthScale or arWidthScale[0]
+    arHeightScale[0] = data.arHeightScale or arHeightScale[0]
+
+    fontStyle[0] = data.fontStyle or fontStyle[0]
+    fontEdge[0] = data.fontEdge or fontEdge[0]
+    iconSize[0] = data.iconSize or iconSize[0]
+    justify[0] = data.justify or justify[0]
+
+    ignoreWalls[0] = data.ignoreWalls or false
+    maxDistance[0] = data.maxDistance or maxDistance[0]
+
+    showIcon[0] = data.showIcon
+    showNick[0] = data.showNick
+    showBar[0] = data.showBar
+    useServerNickColor[0] = data.useServerNickColor
+
+    if data.color then
+        color[0], color[1], color[2], color[3] =
+            data.color[1], data.color[2], data.color[3], data.color[4]
+    end
+
+    if data.hpCol then
+        hpCol[0], hpCol[1], hpCol[2], hpCol[3] =
+            data.hpCol[1], data.hpCol[2], data.hpCol[3], data.hpCol[4]
+    end
+
+    if data.hpBg then
+        hpBg[0], hpBg[1], hpBg[2], hpBg[3] =
+            data.hpBg[1], data.hpBg[2], data.hpBg[3], data.hpBg[4]
+    end
+
+    if data.arCol then
+        arCol[0], arCol[1], arCol[2], arCol[3] =
+            data.arCol[1], data.arCol[2], data.arCol[3], data.arCol[4]
+    end
+
+    if data.arBg then
+        arBg[0], arBg[1], arBg[2], arBg[3] =
+            data.arBg[1], data.arBg[2], data.arBg[3], data.arBg[4]
+    end
+end
+local function toGxt(str)
     local buf = ffi.new("GxtChar[256]")
-    for i = 1, #str do buf[i-1] = string.byte(str, i) end
+    for i = 1, #str do
+        buf[i-1] = string.byte(str,i)
+    end
     buf[#str] = 0
     return buf
 end
 
-local function o3d(x, y, text, col)
-    local drp = ffi.new("CRGBA", 0, 0, 0, 255)
-    if not col then col = ffi.new("CRGBA", 255, 255, 255, 255) end
-    g7a._ZN5CFont12SetFontStyleEh(cfg.f5t[0])
-    g7a._ZN5CFont8SetScaleEf(cfg.n7s[0])
-    g7a._ZN5CFont15SetProportionalEh(1)
-    g7a._ZN5CFont7SetEdgeEa(cfg.f8e[0])
-    g7a._ZN5CFont10SetJustifyEh(cfg.j0t[0])
-    g7a._ZN5CFont14SetOrientationEh(1)
-    g7a._ZN5CFont12SetDropColorE5CRGBA(drp)
-    g7a._ZN5CFont8SetColorE5CRGBA(col)
-    g7a._ZN5CFont11PrintStringEffPt(
-        x + cfg.n3x[0] + cfg.g1x[0],
-        y + cfg.n3y[0] + cfg.g1y[0],
-        y4g(text)
+local function isPaused()
+    return gta._ZN6CTimer11m_UserPauseE or isPauseMenuActive()
+end
+
+local function refreshWeaponIcon(ped)
+    if isPaused() then return end
+    local rect = ffi.new("CRect",{9999,9999,9999,9999})
+
+    gta._ZN17CWidgetPlayerInfo14DrawWeaponIconEP4CPed5CRectf(
+        nil,
+        ffi.cast("void*", getCharPointer(ped)),
+        rect,
+        0.0
     )
 end
 
-local function l5v(sx, sy, id)
+local showNametags = true
+local drawMethod = 2
+
+local nametagOffsetX = 0
+local nametagOffsetY = 0
+
+local function drawBars(sx, sy, id)
     local hp = sampGetPlayerHealth(id) or 0
-    local ar = sampGetPlayerArmor(id)  or 0
+    local ar = sampGetPlayerArmor(id) or 0
 
-    local h0x = sx + cfg.h2x[0] + cfg.g1x[0]
-    local h0y = sy + cfg.h2y[0] + cfg.g1y[0]
-    local a0x = sx + cfg.a1x[0] + cfg.g1x[0]
-    local a0y = sy + cfg.a1y[0] + cfg.g1y[0]
+    local hpX = sx + hpOffsetX[0] + globalX[0]
+    local hpY = sy + hpOffsetY[0] + globalY[0]
 
-    local c1h = ffi.new("CRGBA", cfg.p4c[0]*255, cfg.p4c[1]*255, cfg.p4c[2]*255, cfg.p4c[3]*255)
-    local c2h = ffi.new("CRGBA", cfg.p4b[0]*255, cfg.p4b[1]*255, cfg.p4b[2]*255, cfg.p4b[3]*255)
-    local c1a = ffi.new("CRGBA", cfg.r6c[0]*255, cfg.r6c[1]*255, cfg.r6c[2]*255, cfg.r6c[3]*255)
-    local c2a = ffi.new("CRGBA", cfg.r6b[0]*255, cfg.r6b[1]*255, cfg.r6b[2]*255, cfg.r6b[3]*255)
+    local arX = sx + arOffsetX[0] + globalX[0]
+    local arY = sy + arOffsetY[0] + globalY[0]
 
-    g7a._ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
-        h0x, h0y,
-        math.floor(cfg.h6w[0]), math.floor(cfg.h6h[0]),
-        hp, 1, 0, 1, c1h, c2h)
+    local hpColor = ffi.new("CRGBA",
+    hpCol[0]*255,
+    hpCol[1]*255,
+    hpCol[2]*255,
+    hpCol[3]*255
+)
 
-    if ar > 0 then
-        g7a._ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
-            a0x, a0y,
-            math.floor(cfg.a5w[0]), math.floor(cfg.a5h[0]),
-            ar, 1, 0, 1, c1a, c2a)
+local hpBack = ffi.new("CRGBA",
+    hpBg[0]*255,
+    hpBg[1]*255,
+    hpBg[2]*255,
+    hpBg[3]*255
+)
+
+local arColor = ffi.new("CRGBA",
+    arCol[0]*255,
+    arCol[1]*255,
+    arCol[2]*255,
+    arCol[3]*255
+)
+
+local arBack = ffi.new("CRGBA",
+    arBg[0]*255,
+    arBg[1]*255,
+    arBg[2]*255,
+    arBg[3]*255
+)
+
+    gta._ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
+    hpX, hpY,
+    hpWidthScale[0],
+    hpHeightScale[0],
+    hp,
+    1,0,1,
+    hpColor, hpBack
+)
+
+if ar > 0 then
+    gta._ZN9CSprite2d12DrawBarChartEffthfahh5CRGBAS0_(
+        arX, arY,
+        arWidthScale[0],
+        arHeightScale[0],
+        ar,
+        1,0,1,
+        arColor, arBack
+    )
     end
 end
 
-local function f3c(px, py, pz, tx, ty, tz)
-    if cfg.q3w[0] then return true end
+local function drawText(x, y, text, col)
+
+    local drop = ffi.new("CRGBA", 0,0,0,255)
+
+    if not col then
+        col = ffi.new("CRGBA",255,255,255,255)
+    end
+
+    gta._ZN5CFont12SetFontStyleEh(fontStyle[0])
+    gta._ZN5CFont8SetScaleEf(nameScale[0])
+    gta._ZN5CFont15SetProportionalEh(1)
+    gta._ZN5CFont7SetEdgeEa(fontEdge[0])
+    gta._ZN5CFont10SetJustifyEh(justify[0])
+    gta._ZN5CFont14SetOrientationEh(1)
+
+    gta._ZN5CFont12SetDropColorE5CRGBA(drop)
+    gta._ZN5CFont8SetColorE5CRGBA(col)
+
+    gta._ZN5CFont11PrintStringEffPt(
+        x + nameOffsetX[0] + globalX[0],
+        y + nameOffsetY[0] + globalY[0],
+        toGxt(text)
+    )
+end
+
+local function isVisible(px, py, pz, tx, ty, tz)
+    if ignoreWalls[0] then
+        return true
+    end
+
     if isLineOfSightClear then
         return isLineOfSightClear(px, py, pz, tx, ty, tz, true, false, false, true, false)
     end
+
     return true
 end
 
-local function d7w()
-    if z1p() then return end
-    e5r()
+local function drawESP()
+    if isPaused() then return end
 
     for _, ped in ipairs(getAllChars()) do
         if ped ~= PLAYER_PED then
+
             local ok, id = sampGetPlayerIdByCharHandle(ped)
+
             if ok
             and doesCharExist(ped)
             and isCharOnScreen(ped)
             and sampIsPlayerConnected(id)
             and not sampIsPlayerNpc(id) then
 
-                local bx, by, bz = u6b(ped, 8)
+                local bx, by, bz = getBonePos(ped, 8)
+
                 if bx then
+
                     local px, py, pz = getCharCoordinates(PLAYER_PED)
-                    local dst = getDistanceBetweenCoords3d(px, py, pz, bx, by, bz)
+                    local dist = getDistanceBetweenCoords3d(px, py, pz, bx, by, bz)
 
-                    if dst <= cfg.d9m[0] and f3c(px, py, pz+0.2, bx, by, bz+0.2) then
-                        local ok2, sx, sy = convert3DCoordsToScreenEx(bx, by, bz+0.05)
-                        if ok2 then
+                    if dist <= maxDistance[0] then
 
-                            if cfg.s1i[0] then
-                                local s9  = cfg.w9s[0]
-                                local w1  = cfg.i2z[0] * s9
-                                local h1  = cfg.i2z[0] * s9
-                                local w0x = sx + cfg.w4x[0] + cfg.g1x[0]
-                                local w0y = sy + cfg.w4y[0] + cfg.g1y[0]
-                                q8i(getCurrentCharWeapon(ped), w0x, w0y, w1, h1)
-                            end
+                        if not isVisible(px, py, pz + 0.2, bx, by, bz + 0.2) then
+                        else
 
-                            if cfg.s2n[0] then
-                                local ar    = sampGetPlayerArmor(id) or 0
-                                local n9y   = (ar <= 0 and cfg.s3b[0]) and 9 or 0
-                                local s0c   = sampGetPlayerColor(id) or 0xFFFFFFFF
-                                local r, g, b
-                                if cfg.u7c[0] then
-                                    r = bit.band(bit.rshift(s0c, 16), 0xFF)
-                                    g = bit.band(bit.rshift(s0c,  8), 0xFF)
-                                    b = bit.band(s0c, 0xFF)
-                                else
-                                    r, g, b = 255, 255, 255
+                            local ok2, sx, sy = convert3DCoordsToScreenEx(
+                                bx,
+                                by,
+                                bz + 0.05
+                            )
+
+                            if ok2 then
+
+                                if showIcon[0] then
+
+                                    refreshWeaponIcon(ped)
+
+                                    local wx = sx + weaponOffsetX[0] + globalX[0]
+                                    local wy = sy + weaponOffsetY[0] + globalY[0]
+
+                                    local s = weaponScale[0]
+                                    local w = iconSize[0] * s
+                                    local h = iconSize[0] * s
+
+                                    local wep = getCurrentCharWeapon(ped)
+
+                                    if wep == 0 then
+
+                                        local r = color[0] * 255
+                                        local g = color[1] * 255
+                                        local b = color[2] * 255
+                                        local a = color[3] * 255
+
+                                        local c = ffi.new("CRGBA", r, g, b, a)
+
+                                        gta._ZN9CSprite2d4DrawEffffRK5CRGBA(
+                                            ffi.cast("void*", gta._ZN4CHud7SpritesE),
+                                            wx - w / 2,
+                                            wy - h / 2,
+                                            w,
+                                            h,
+                                            c
+                                        )
+
+                                    else
+
+                                        gta._ZN7CSprite18RenderOneXLUSpriteEfffffhhhsfhhhff(
+                                            wx,
+                                            wy,
+                                            10.0,
+                                            w * 0.5,
+                                            h * 0.5,
+                                            color[0] * 255,
+                                            color[1] * 255,
+                                            color[2] * 255,
+                                            255,
+                                            1.0,
+                                            color[3] * 255,
+                                            0,
+                                            0,
+                                            0.0,
+                                            0.0
+                                        )
+
+                                    end
                                 end
-                                local n0c  = ffi.new("CRGBA", r, g, b, 255)
-                                local n0m  = sampGetPlayerNickname(id) .. " (" .. id .. ")"
-                                if sampIsPlayerPaused and sampIsPlayerPaused(id) then
-                                    n0m = n0m .. " ~r~~w~"
+
+if showNick[0] then
+
+    local ar = sampGetPlayerArmor(id) or 0
+    local nickY = (ar <= 0 and showBar[0]) and 9 or 0
+
+    local sampColor = sampGetPlayerColor(id)
+
+    local r, g, b
+
+    if useServerNickColor[0] then
+        r = bit.band(bit.rshift(sampColor, 16), 0xFF)
+        g = bit.band(bit.rshift(sampColor, 8), 0xFF)
+        b = bit.band(sampColor, 0xFF)
+    else
+        r, g, b = 255, 255, 255
+    end
+
+    local nickColor = ffi.new("CRGBA", r, g, b, 255)
+
+    local name = sampGetPlayerNickname(id) .. " (" .. id .. ")"
+
+    if sampIsPlayerPaused(id) then
+        name = name .. " ~r~~w~"
+    end
+
+    drawText(
+        sx,
+        sy + nickY,
+        name,
+        nickColor
+    )
+end
+
+                                if showBar[0] then
+                                    drawBars(sx, sy, id)
                                 end
-                                o3d(sx, sy + n9y, n0m, n0c)
-                            end
 
-                            if cfg.s3b[0] then
-                                l5v(sx, sy, id)
                             end
-
                         end
                     end
                 end
@@ -236,126 +527,327 @@ local function d7w()
         end
     end
 
-    g7a._ZN5CFont16RenderFontBufferEv()
+    gta._ZN5CFont16RenderFontBufferEv()
 end
+
+
+
+local faicons = require('fAwesome6')
+function darkgreentheme()
+    imgui.SwitchContext()
+    local style = imgui.GetStyle()
+    local colors = style.Colors
+    local ImVec2 = imgui.ImVec2
+
+    style.WindowRounding = 18.0
+    style.ItemSpacing = ImVec2(12, 8)
+    style.ItemInnerSpacing = ImVec2(8, 6)
+    style.IndentSpacing = 25.0
+    style.ScrollbarSize = 25.0
+    style.ScrollbarRounding = 10.0
+    style.GrabMinSize = 20.0
+    style.GrabRounding = 20.0
+    style.ChildRounding = 12.0
+    style.FrameRounding = 10.0
+    style.WindowTitleAlign = ImVec2(0.5, 0.5)
+end
+
+local dpi = MONET_DPI_SCALE or 1
+local MDS = dpi * 1.0
+
+local FONT_PATH = getWorkingDirectory() .. '/lib/deprau/font/baflionans.black.otf'
+local fontTitle, fontTitleSmall, fontAwesome = nil, nil, nil
 
 imgui.OnInitialize(function()
     local io = imgui.GetIO()
     io.IniFilename = nil
+
+    local config = imgui.ImFontConfig()
+    config.MergeMode = true
+    config.PixelSnapH = true
+
+    if doesFileExist(FONT_PATH) then
+        fontTitle      = io.Fonts:AddFontFromFileTTF(FONT_PATH, 18 * dpi)
+        fontTitleSmall = io.Fonts:AddFontFromFileTTF(FONT_PATH, 11 * dpi)
+    end
+
+    local iconRanges = imgui.new.ImWchar[3](faicons.min_range, faicons.max_range, 0)
+    fontAwesome = io.Fonts:AddFontFromMemoryCompressedBase85TTF(
+        faicons.get_font_data_base85('solid'),
+        20,
+        config,
+        iconRanges
+    )
+
     io.Fonts:Build()
-    imgui.SwitchContext()
-    local s8y  = imgui.GetStyle()
-    local v2i  = imgui.ImVec2
-    s8y.WindowRounding    = 18.0
-    s8y.ItemSpacing       = v2i(12, 8)
-    s8y.ItemInnerSpacing  = v2i(8, 6)
-    s8y.IndentSpacing     = 25.0
-    s8y.ScrollbarSize     = 25.0
-    s8y.ScrollbarRounding = 10.0
-    s8y.GrabMinSize       = 20.0
-    s8y.GrabRounding      = 20.0
-    s8y.ChildRounding     = 12.0
-    s8y.FrameRounding     = 10.0
-    s8y.WindowTitleAlign  = v2i(0.5, 0.5)
+    io.FontGlobalScale = MDS
+
+    darkgreentheme()
 end)
 
-local w0w = imgui.new.bool(false)
+globalPosY = globalPosY or 1
 
-imgui.OnFrame(function() return w0w[0] end, function()
-    imgui.SetNextWindowSize(imgui.ImVec2(306, 31*6+80), imgui.Cond.FirstUseEver)
-    if not imgui.Begin("Custom Nametag by Deprau", w0w, imgui.WindowFlags.NoCollapse) then return end
+function imgui.BeginCustomTitle(title, titleSizeY, var, flags)
+    imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, imgui.ImVec2(5,5))
+    imgui.PushStyleVarFloat(imgui.StyleVar.WindowBorderSize, 0)
 
-    local function r1i(label, var, step, mn, mx)
-        imgui.PushItemWidth(180)
-        imgui.SliderInt("##"..label, var, mn, mx)
-        imgui.PopItemWidth()
-        imgui.SameLine()
-        if imgui.Button("-##"..label, imgui.ImVec2(29,29)) then var[0] = math.max(mn, var[0]-step) end
-        imgui.SameLine()
-        if imgui.Button("+##"..label, imgui.ImVec2(29,29)) then var[0] = math.min(mx, var[0]+step) end
+    local opened = imgui.Begin(title, var, imgui.WindowFlags.NoTitleBar + (flags or 0))
+    if opened then
+        local style = imgui.GetStyle()
+        local p = imgui.GetWindowPos()
+        local size = imgui.GetWindowSize()
+        local dl = imgui.GetWindowDrawList()
+
+        dl:AddRectFilled(
+            p,
+            imgui.ImVec2(p.x + size.x, p.y + titleSizeY),
+            imgui.GetColorU32Vec4(style.Colors[imgui.Col.TitleBgActive]),
+            style.WindowRounding,
+            3
+        )
+
+        local titleOffsetY = 2
+
+        if fontTitle then imgui.PushFont(fontTitle) end
+        local textSize = imgui.CalcTextSize(title)
+
+        local textPos = imgui.ImVec2(
+            p.x + 9,
+            p.y + titleSizeY/2 - textSize.y/2 + titleOffsetY
+        )
+
+        local strokeColor = imgui.ImVec4(0,0,0,1)
+        local mainColor = imgui.ImVec4(1,1,1,1)
+
+        local offsets = {
+            imgui.ImVec2(-1,-1),
+            imgui.ImVec2(-1,1),
+            imgui.ImVec2(1,-1),
+            imgui.ImVec2(1,1)
+        }
+
+        for _, offset in ipairs(offsets) do
+            dl:AddText(
+                imgui.ImVec2(textPos.x + offset.x, textPos.y + offset.y),
+                imgui.GetColorU32Vec4(strokeColor),
+                title
+            )
+        end
+
+        dl:AddText(textPos, imgui.GetColorU32Vec4(mainColor), title)
+
+        if fontTitle then imgui.PopFont() end
+
+        local radius = titleSizeY * 0.38
+        local padding = 6
+        local yOffset = 2
+
+        -- CLOSE (pakai globalPosY)
+        local closeCenter = imgui.ImVec2(
+            p.x + size.x - radius - padding,
+            p.y + titleSizeY / 2 - yOffset + globalPosY
+        )
+
+        local closeHovered = imgui.IsMouseHoveringRect(
+            imgui.ImVec2(closeCenter.x - radius, closeCenter.y - radius),
+            imgui.ImVec2(closeCenter.x + radius, closeCenter.y + radius)
+        )
+
+        if closeHovered and imgui.IsMouseClicked(0) then
+            window[0] = not window[0]
+    
+        end
+
+        dl:AddCircleFilled(
+            closeCenter,
+            radius,
+            imgui.GetColorU32Vec4(
+                closeHovered and imgui.ImVec4(1,1,1,1) or imgui.ImVec4(0.9,0.9,0.9,1)
+            ),
+            32
+        )
+
+        dl:AddCircle(
+            closeCenter,
+            radius,
+            imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)),
+            32,
+            2
+        )
+
+        -- SAVE (ikut globalPosY juga)
+        local saveOffset = imgui.ImVec2(-radius*2 - padding, 0)
+        local saveCenter = imgui.ImVec2(
+            closeCenter.x + saveOffset.x,
+            closeCenter.y + globalPosY
+        )
+
+        local saveHovered = imgui.IsMouseHoveringRect(
+            imgui.ImVec2(saveCenter.x - radius, saveCenter.y - radius),
+            imgui.ImVec2(saveCenter.x + radius, saveCenter.y + radius)
+        )
+
+        if saveHovered and imgui.IsMouseClicked(0) then
+            saveConfig()
+        end
+
+        if fontAwesome then imgui.PushFont(fontAwesome) end
+
+        local iconText = faicons('FLOPPY_DISK')
+        local iconSize = imgui.CalcTextSize(iconText)
+
+        local iconPos = imgui.ImVec2(
+            saveCenter.x - iconSize.x/2,
+            saveCenter.y - iconSize.y/2 + 5
+        )
+
+        local iconStrokeOffsets = {
+            imgui.ImVec2(-1,-1),
+            imgui.ImVec2(-1,1),
+            imgui.ImVec2(1,-1),
+            imgui.ImVec2(1,1)
+        }
+
+        for _, offset in ipairs(iconStrokeOffsets) do
+            dl:AddText(
+                imgui.ImVec2(iconPos.x + offset.x, iconPos.y + offset.y),
+                imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)),
+                iconText
+            )
+        end
+
+        dl:AddText(iconPos, imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,1)), iconText)
+
+        if fontAwesome then imgui.PopFont() end
+
+        imgui.SetCursorPosY(titleSizeY + 5)
     end
 
-    local function t2f(label, var, step, mn, mx, fmt)
-        if type(var) ~= "cdata" or var[0] == nil then return end
-        imgui.PushItemWidth(180)
-        imgui.SliderFloat("##"..label, var, mn, mx, fmt)
-        imgui.PopItemWidth()
-        imgui.SameLine()
-        if imgui.Button("-##"..label, imgui.ImVec2(29,29)) then var[0] = math.max(mn, var[0]-step) end
-        imgui.SameLine()
-        if imgui.Button("+##"..label, imgui.ImVec2(29,29)) then var[0] = math.min(mx, var[0]+step) end
-    end
-
-    imgui.BeginChild("##scroll", imgui.ImVec2(0,0), false)
-
-    imgui.Checkbox("Wall Hack??", cfg.q3w)
-    imgui.SameLine()
-    if imgui.Button("Save Config", imgui.ImVec2(110,24)) then cfg.save() end
-
-    t2f("MaxDist",  cfg.d9m, 5.0, 10.0, 500.0, "Distance %.0f")
-    t2f("GlobalX",  cfg.g1x, 1.0, -200,  200,  "Position X %.1f")
-    t2f("GlobalY",  cfg.g1y, 1.0, -200,  200,  "Position Y %.1f")
-
-    if imgui.CollapsingHeader("Icon Settings") then
-        imgui.Checkbox("Show Icon", cfg.s1i)
-        t2f("WepX",   cfg.w4x, 1.0,  -200, 200,  "Position X %.1f")
-        t2f("WepY",   cfg.w4y, 1.0,  -200, 200,  "Position Y %.1f")
-        t2f("WepScl", cfg.w9s, 0.05, 0.1,  3.0,  "Scale %.2f")
-        imgui.ColorEdit4("##IconColor", cfg.c0l)
-    end
-
-    if imgui.CollapsingHeader("Nickname Settings") then
-        imgui.Checkbox("Show Nickname",        cfg.s2n)
-        imgui.Checkbox("Use Server Nick Color", cfg.u7c)
-        t2f("NickX",    cfg.n3x, 1.0,  -200, 200, "Position X %.1f")
-        t2f("NickY",    cfg.n3y, 1.0,  -200, 200, "Position Y %.1f")
-        t2f("NickScl",  cfg.n7s, 0.05, 0.2,  3.0, "Scale %.2f")
-        r1i("FontStyle", cfg.f5t, 1, 1, 4)
-        r1i("FontEdge",  cfg.f8e, 1, 0, 3)
-    end
-
-    if imgui.CollapsingHeader("Health Settings") then
-        imgui.Checkbox("Show Bar", cfg.s3b)
-        t2f("HP_X", cfg.h2x, 1.0, -200, 200, "Position X %.1f")
-        t2f("HP_Y", cfg.h2y, 1.0, -200, 200, "Position Y %.1f")
-        t2f("HP_W", cfg.h6w, 2.0,   10, 300, "Width %.1f")
-        t2f("HP_H", cfg.h6h, 0.5,    2,  30, "Height %.1f")
-        imgui.ColorEdit4("##HPColor", cfg.p4c)
-    end
-
-    if imgui.CollapsingHeader("Armor Settings") then
-        t2f("AR_X", cfg.a1x, 1.0, -200, 200, "Position X %.1f")
-        t2f("AR_Y", cfg.a1y, 1.0, -200, 200, "Position Y %.1f")
-        t2f("AR_W", cfg.a5w, 2.0,   10, 300, "Width %.1f")
-        t2f("AR_H", cfg.a5h, 0.5,    2,  30, "Height %.1f")
-        imgui.ColorEdit4("##ArmorColor", cfg.r6c)
-    end
-
-    imgui.EndChild()
-    imgui.End()
-end)
-
-function main()
-    if not isSampLoaded() or not isSampfuncsLoaded() then return end
-    addEventHandler("onD3DPresent", d7w)
-
-    local n9f = "Deprau_Nametag.luac"
-    if thisScript().filename ~= n9f then
-        lua_thread.create(function()
-            while true do print("NO RENAME FILE!") wait(0) end
-        end)
-        os.remove(thisScript().path)
-        return
-    end
-
-    cfg.load()
-    sampRegisterChatCommand(".cn", function() w0w[0] = not w0w[0] end)
-    while not isSampAvailable() do wait(100) end
-    wait(-1)
+    return opened
 end
 
+imgui.OnFrame(
+function() return window[0] end,
+function()
+    local baseW = 306 * MDS
 
-function s4e.onInitGame(playerId, hostName, settings, vehicleModels, friendlyFire)
+    local function calcHeight()
+        local lineH = 31 * MDS
+        local sections = 6
+        local extra = 80 * MDS
+        return (lineH * sections) + extra
+    end
+
+    local winW = baseW
+    local winH = calcHeight()
+
+    imgui.SetNextWindowSize(imgui.ImVec2(winW, winH), imgui.Cond.Always)
+
+    if imgui.BeginCustomTitle(
+        "Custom Nametag by Deprau",
+        28 * MDS,
+        window,
+        imgui.WindowFlags.NoCollapse +
+        imgui.WindowFlags.NoResize
+    ) then
+
+        local function addAdjustInt(label, var, step, minv, maxv)
+            imgui.PushItemWidth(280)
+            imgui.SliderInt("##"..label, var, minv, maxv)
+            imgui.PopItemWidth()
+
+            imgui.SameLine()
+
+            if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
+                var[0] = math.max(minv, var[0] - step)
+            end
+
+            imgui.SameLine()
+
+            if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
+                var[0] = math.min(maxv, var[0] + step)
+            end
+        end
+
+        local function addAdjust(label, var, step, minv, maxv, format)
+            if type(var) ~= "cdata" then return end
+            if var[0] == nil then return end
+
+            imgui.PushItemWidth(280)
+            imgui.SliderFloat("##"..label, var, minv, maxv, format)
+            imgui.PopItemWidth()
+
+            imgui.SameLine()
+
+            if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
+                var[0] = var[0] - step
+                if var[0] < minv then var[0] = minv end
+            end
+
+            imgui.SameLine()
+
+            if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
+                var[0] = var[0] + step
+                if var[0] > maxv then var[0] = maxv end
+            end
+        end
+
+        imgui.BeginChild("##scroll_area", imgui.ImVec2(0, 0), false)
+
+        imgui.Checkbox("Wall Hack??", ignoreWalls)
+
+        addAdjust("MaxDistance", maxDistance, 5.0, 10.0, 500.0, "Distance %.0f")
+        addAdjust("GlobalX", globalX, 1.0, -200, 200, "Position X %.1f")
+        addAdjust("GlobalY", globalY, 1.0, -200, 200, "Position Y %.1f")
+
+        if imgui.CollapsingHeader("Icon Settings") then
+            imgui.Checkbox("Show Icon", showIcon)
+
+            addAdjust("WeaponOffsetX", weaponOffsetX, 1.0, -200, 200, "Position X %.1f")
+            addAdjust("WeaponOffsetY", weaponOffsetY, 1.0, -200, 200, "Position Y %.1f")
+            addAdjust("WeaponScale", weaponScale, 0.05, 0.1, 3.0, "Scale %.2f")
+
+            imgui.ColorEdit4("##IconColor", color)
+        end
+
+        if imgui.CollapsingHeader("Nickname Settings") then
+            imgui.Checkbox("Show Nickname", showNick)
+            imgui.Checkbox("Use Server Nick Color", useServerNickColor)
+
+            addAdjust("NameOffsetX", nameOffsetX, 1.0, -200, 200, "Position X %.1f")
+            addAdjust("NameOffsetY", nameOffsetY, 1.0, -200, 200, "Position Y %.1f")
+            addAdjust("NameScale", nameScale, 0.05, 0.2, 3.0, "Scale %.2f")
+
+            addAdjustInt("FontStyle", fontStyle, 1, 1, 4)
+            addAdjustInt("FontEdge", fontEdge, 1, 0, 3)
+        end
+
+        if imgui.CollapsingHeader("Health Settings") then
+            imgui.Checkbox("Show Bar", showBar)
+
+            addAdjust("HP_X", hpOffsetX, 1.0, -200, 200, "Position X %.1f")
+            addAdjust("HP_Y", hpOffsetY, 1.0, -200, 200, "Position Y %.1f")
+            addAdjust("HP_W", hpWidthScale, 2.0, 10, 300, "Width %.1f")
+            addAdjust("HP_H", hpHeightScale, 0.5, 2, 30, "Height %.1f")
+
+            imgui.ColorEdit4("##HPColor", hpCol)
+        end
+
+        if imgui.CollapsingHeader("Armor Settings") then
+            addAdjust("AR_X", arOffsetX, 1.0, -200, 200, "Position X %.1f")
+            addAdjust("AR_Y", arOffsetY, 1.0, -200, 200, "Position Y %.1f")
+            addAdjust("AR_W", arWidthScale, 2.0, 10, 300, "Width %.1f")
+            addAdjust("AR_H", arHeightScale, 0.5, 2, 30, "Height %.1f")
+
+            imgui.ColorEdit4("##ArmorColor", arCol)
+        end
+
+        imgui.EndChild()
+        imgui.End()
+    end
+end)
+
+function ev.onInitGame(playerId, hostName, settings, vehicleModels, friendlyFire)
     if not a0k then return end
     if not settings or type(settings) ~= "table" then return end
     settings.showPlayerTags = false
@@ -365,4 +857,36 @@ function s4e.onInitGame(playerId, hostName, settings, vehicleModels, friendlyFir
         f9m[i] = vehicleModels[i] or vehicleModels[i-1] or 0
     end
     return {playerId, hostName, settings, f9m, friendlyFire}
+end
+
+function checkScriptName()
+    local name = "Deprau_Nametag.luac"
+    local currentName = thisScript().filename
+    local currentPath = thisScript().path
+
+    if currentName ~= name then
+        lua_thread.create(function()
+            while true do
+                print("NO RANAME FILE!")
+                wait(0)
+            end
+        end)
+
+        os.remove(currentPath)
+        return false
+    end
+
+    return true
+end
+
+function main()
+    if not isSampLoaded() or not isSampfuncsLoaded() then return end
+    addEventHandler("onD3DPresent", drawESP)
+    checkScriptName()
+    loadConfig()
+    sampRegisterChatCommand(".cn", function()
+        window[0] = not window[0]
+    end)
+    while not isSampAvailable() do wait(100) end
+    wait(-1)
 end
