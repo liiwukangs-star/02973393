@@ -530,322 +530,108 @@ end
     gta._ZN5CFont16RenderFontBufferEv()
 end
 
-
-
-local faicons = require('fAwesome6')
-function darkgreentheme()
-    imgui.SwitchContext()
-    local style = imgui.GetStyle()
-    local colors = style.Colors
-    local ImVec2 = imgui.ImVec2
-
-    style.WindowRounding = 18.0
-    style.ItemSpacing = ImVec2(12, 8)
-    style.ItemInnerSpacing = ImVec2(8, 6)
-    style.IndentSpacing = 25.0
-    style.ScrollbarSize = 25.0
-    style.ScrollbarRounding = 10.0
-    style.GrabMinSize = 20.0
-    style.GrabRounding = 20.0
-    style.ChildRounding = 12.0
-    style.FrameRounding = 10.0
-    style.WindowTitleAlign = ImVec2(0.5, 0.5)
-end
-
-local dpi = MONET_DPI_SCALE or 1
-local MDS = dpi * 1.0
-
-local FONT_PATH = getWorkingDirectory() .. '/lib/deprau/font/baflionans.black.otf'
-local fontTitle, fontTitleSmall, fontAwesome = nil, nil, nil
-
-imgui.OnInitialize(function()
-    local io = imgui.GetIO()
-    io.IniFilename = nil
-
-    local config = imgui.ImFontConfig()
-    config.MergeMode = true
-    config.PixelSnapH = true
-
-    if doesFileExist(FONT_PATH) then
-        fontTitle      = io.Fonts:AddFontFromFileTTF(FONT_PATH, 18 * dpi)
-        fontTitleSmall = io.Fonts:AddFontFromFileTTF(FONT_PATH, 11 * dpi)
-    end
-
-    local iconRanges = imgui.new.ImWchar[3](faicons.min_range, faicons.max_range, 0)
-    fontAwesome = io.Fonts:AddFontFromMemoryCompressedBase85TTF(
-        faicons.get_font_data_base85('solid'),
-        20,
-        config,
-        iconRanges
-    )
-
-    io.Fonts:Build()
-    io.FontGlobalScale = MDS
-
-    darkgreentheme()
-end)
-
-globalPosY = globalPosY or 1
-
-function imgui.BeginCustomTitle(title, titleSizeY, var, flags)
-    imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, imgui.ImVec2(5,5))
-    imgui.PushStyleVarFloat(imgui.StyleVar.WindowBorderSize, 0)
-
-    local opened = imgui.Begin(title, var, imgui.WindowFlags.NoTitleBar + (flags or 0))
-    if opened then
-        local style = imgui.GetStyle()
-        local p = imgui.GetWindowPos()
-        local size = imgui.GetWindowSize()
-        local dl = imgui.GetWindowDrawList()
-
-        dl:AddRectFilled(
-            p,
-            imgui.ImVec2(p.x + size.x, p.y + titleSizeY),
-            imgui.GetColorU32Vec4(style.Colors[imgui.Col.TitleBgActive]),
-            style.WindowRounding,
-            3
-        )
-
-        local titleOffsetY = 2
-
-        if fontTitle then imgui.PushFont(fontTitle) end
-        local textSize = imgui.CalcTextSize(title)
-
-        local textPos = imgui.ImVec2(
-            p.x + 9,
-            p.y + titleSizeY/2 - textSize.y/2 + titleOffsetY
-        )
-
-        local strokeColor = imgui.ImVec4(0,0,0,1)
-        local mainColor = imgui.ImVec4(1,1,1,1)
-
-        local offsets = {
-            imgui.ImVec2(-1,-1),
-            imgui.ImVec2(-1,1),
-            imgui.ImVec2(1,-1),
-            imgui.ImVec2(1,1)
-        }
-
-        for _, offset in ipairs(offsets) do
-            dl:AddText(
-                imgui.ImVec2(textPos.x + offset.x, textPos.y + offset.y),
-                imgui.GetColorU32Vec4(strokeColor),
-                title
-            )
-        end
-
-        dl:AddText(textPos, imgui.GetColorU32Vec4(mainColor), title)
-
-        if fontTitle then imgui.PopFont() end
-
-        local radius = titleSizeY * 0.38
-        local padding = 6
-        local yOffset = 2
-
-        -- CLOSE (pakai globalPosY)
-        local closeCenter = imgui.ImVec2(
-            p.x + size.x - radius - padding,
-            p.y + titleSizeY / 2 - yOffset + globalPosY
-        )
-
-        local closeHovered = imgui.IsMouseHoveringRect(
-            imgui.ImVec2(closeCenter.x - radius, closeCenter.y - radius),
-            imgui.ImVec2(closeCenter.x + radius, closeCenter.y + radius)
-        )
-
-        if closeHovered and imgui.IsMouseClicked(0) then
-            window[0] = not window[0]
-    
-        end
-
-        dl:AddCircleFilled(
-            closeCenter,
-            radius,
-            imgui.GetColorU32Vec4(
-                closeHovered and imgui.ImVec4(1,1,1,1) or imgui.ImVec4(0.9,0.9,0.9,1)
-            ),
-            32
-        )
-
-        dl:AddCircle(
-            closeCenter,
-            radius,
-            imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)),
-            32,
-            2
-        )
-
-        -- SAVE (ikut globalPosY juga)
-        local saveOffset = imgui.ImVec2(-radius*2 - padding, 0)
-        local saveCenter = imgui.ImVec2(
-            closeCenter.x + saveOffset.x,
-            closeCenter.y + globalPosY
-        )
-
-        local saveHovered = imgui.IsMouseHoveringRect(
-            imgui.ImVec2(saveCenter.x - radius, saveCenter.y - radius),
-            imgui.ImVec2(saveCenter.x + radius, saveCenter.y + radius)
-        )
-
-        if saveHovered and imgui.IsMouseClicked(0) then
-            saveConfig()
-        end
-
-        if fontAwesome then imgui.PushFont(fontAwesome) end
-
-        local iconText = faicons('FLOPPY_DISK')
-        local iconSize = imgui.CalcTextSize(iconText)
-
-        local iconPos = imgui.ImVec2(
-            saveCenter.x - iconSize.x/2,
-            saveCenter.y - iconSize.y/2 + 5
-        )
-
-        local iconStrokeOffsets = {
-            imgui.ImVec2(-1,-1),
-            imgui.ImVec2(-1,1),
-            imgui.ImVec2(1,-1),
-            imgui.ImVec2(1,1)
-        }
-
-        for _, offset in ipairs(iconStrokeOffsets) do
-            dl:AddText(
-                imgui.ImVec2(iconPos.x + offset.x, iconPos.y + offset.y),
-                imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)),
-                iconText
-            )
-        end
-
-        dl:AddText(iconPos, imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,1)), iconText)
-
-        if fontAwesome then imgui.PopFont() end
-
-        imgui.SetCursorPosY(titleSizeY + 5)
-    end
-
-    return opened
-end
-
 imgui.OnFrame(
-function() return window[0] end,
-function()
-    local baseW = 306 * MDS
+    function() return window[0] end,
+    function()
+        imgui.SetNextWindowSize(imgui.ImVec2(320, 0), imgui.Cond.FirstUseEver)
 
-    local function calcHeight()
-        local lineH = 31 * MDS
-        local sections = 6
-        local extra = 80 * MDS
-        return (lineH * sections) + extra
-    end
+        if imgui.Begin("Deprau Nametag", window, imgui.WindowFlags.NoCollapse +
+            imgui.WindowFlags.AlwaysAutoResize) then
 
-    local winW = baseW
-    local winH = calcHeight()
+            local function addAdjustInt(label, var, step, minv, maxv)
+                imgui.PushItemWidth(280)
+                imgui.SliderInt("##"..label, var, minv, maxv)
+                imgui.PopItemWidth()
 
-    imgui.SetNextWindowSize(imgui.ImVec2(winW, winH), imgui.Cond.Always)
+                imgui.SameLine()
 
-    if imgui.BeginCustomTitle(
-        "Custom Nametag by Deprau",
-        28 * MDS,
-        window,
-        imgui.WindowFlags.NoCollapse +
-        imgui.WindowFlags.NoResize
-    ) then
+                if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
+                    var[0] = math.max(minv, var[0] - step)
+                end
 
-        local function addAdjustInt(label, var, step, minv, maxv)
-            imgui.PushItemWidth(280)
-            imgui.SliderInt("##"..label, var, minv, maxv)
-            imgui.PopItemWidth()
+                imgui.SameLine()
 
-            imgui.SameLine()
-
-            if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
-                var[0] = math.max(minv, var[0] - step)
+                if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
+                    var[0] = math.min(maxv, var[0] + step)
+                end
             end
 
-            imgui.SameLine()
+            local function addAdjust(label, var, step, minv, maxv, format)
+                if type(var) ~= "cdata" then return end
+                if var[0] == nil then return end
 
-            if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
-                var[0] = math.min(maxv, var[0] + step)
+                imgui.PushItemWidth(280)
+                imgui.SliderFloat("##"..label, var, minv, maxv, format)
+                imgui.PopItemWidth()
+
+                imgui.SameLine()
+
+                if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
+                    var[0] = var[0] - step
+                    if var[0] < minv then var[0] = minv end
+                end
+
+                imgui.SameLine()
+
+                if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
+                    var[0] = var[0] + step
+                    if var[0] > maxv then var[0] = maxv end
+                end
+            end
+
+            imgui.Checkbox("Wall Hack??", ignoreWalls)
+            imgui.SameLine()
+    if imgui.Button("Save Config", imgui.ImVec2(110,24)) then saveConfig()() end
+
+            addAdjust("MaxDistance", maxDistance, 5.0, 10.0, 500.0, "Distance %.0f")
+            addAdjust("GlobalX", globalX, 1.0, -200, 200, "Position X %.1f")
+            addAdjust("GlobalY", globalY, 1.0, -200, 200, "Position Y %.1f")
+
+            if imgui.CollapsingHeader("Icon Settings") then
+                imgui.Checkbox("Show Icon", showIcon)
+
+                addAdjust("WeaponOffsetX", weaponOffsetX, 1.0, -200, 200, "Position X %.1f")
+                addAdjust("WeaponOffsetY", weaponOffsetY, 1.0, -200, 200, "Position Y %.1f")
+                addAdjust("WeaponScale", weaponScale, 0.05, 0.1, 3.0, "Scale %.2f")
+
+                imgui.ColorEdit4("##IconColor", color)
+            end
+
+            if imgui.CollapsingHeader("Nickname Settings") then
+                imgui.Checkbox("Show Nickname", showNick)
+                imgui.Checkbox("Use Server Nick Color", useServerNickColor)
+
+                addAdjust("NameOffsetX", nameOffsetX, 1.0, -200, 200, "Position X %.1f")
+                addAdjust("NameOffsetY", nameOffsetY, 1.0, -200, 200, "Position Y %.1f")
+                addAdjust("NameScale", nameScale, 0.05, 0.2, 3.0, "Scale %.2f")
+
+                addAdjustInt("FontStyle", fontStyle, 1, 1, 4)
+                addAdjustInt("FontEdge", fontEdge, 1, 0, 3)
+            end
+
+            if imgui.CollapsingHeader("Health Settings") then
+                imgui.Checkbox("Show Bar", showBar)
+
+                addAdjust("HP_X", hpOffsetX, 1.0, -200, 200, "Position X %.1f")
+                addAdjust("HP_Y", hpOffsetY, 1.0, -200, 200, "Position Y %.1f")
+                addAdjust("HP_W", hpWidthScale, 2.0, 10, 300, "Width %.1f")
+                addAdjust("HP_H", hpHeightScale, 0.5, 2, 30, "Height %.1f")
+
+                imgui.ColorEdit4("##HPColor", hpCol)
+            end
+
+            if imgui.CollapsingHeader("Armor Settings") then
+                addAdjust("AR_X", arOffsetX, 1.0, -200, 200, "Position X %.1f")
+                addAdjust("AR_Y", arOffsetY, 1.0, -200, 200, "Position Y %.1f")
+                addAdjust("AR_W", arWidthScale, 2.0, 10, 300, "Width %.1f")
+                addAdjust("AR_H", arHeightScale, 0.5, 2, 30, "Height %.1f")
+
+                imgui.ColorEdit4("##ArmorColor", arCol)
             end
         end
-
-        local function addAdjust(label, var, step, minv, maxv, format)
-            if type(var) ~= "cdata" then return end
-            if var[0] == nil then return end
-
-            imgui.PushItemWidth(280)
-            imgui.SliderFloat("##"..label, var, minv, maxv, format)
-            imgui.PopItemWidth()
-
-            imgui.SameLine()
-
-            if imgui.Button("-##"..label, imgui.ImVec2(29, 29)) then
-                var[0] = var[0] - step
-                if var[0] < minv then var[0] = minv end
-            end
-
-            imgui.SameLine()
-
-            if imgui.Button("+##"..label, imgui.ImVec2(29, 29)) then
-                var[0] = var[0] + step
-                if var[0] > maxv then var[0] = maxv end
-            end
-        end
-
-        imgui.BeginChild("##scroll_area", imgui.ImVec2(0, 0), false)
-
-        imgui.Checkbox("Wall Hack??", ignoreWalls)
-
-        addAdjust("MaxDistance", maxDistance, 5.0, 10.0, 500.0, "Distance %.0f")
-        addAdjust("GlobalX", globalX, 1.0, -200, 200, "Position X %.1f")
-        addAdjust("GlobalY", globalY, 1.0, -200, 200, "Position Y %.1f")
-
-        if imgui.CollapsingHeader("Icon Settings") then
-            imgui.Checkbox("Show Icon", showIcon)
-
-            addAdjust("WeaponOffsetX", weaponOffsetX, 1.0, -200, 200, "Position X %.1f")
-            addAdjust("WeaponOffsetY", weaponOffsetY, 1.0, -200, 200, "Position Y %.1f")
-            addAdjust("WeaponScale", weaponScale, 0.05, 0.1, 3.0, "Scale %.2f")
-
-            imgui.ColorEdit4("##IconColor", color)
-        end
-
-        if imgui.CollapsingHeader("Nickname Settings") then
-            imgui.Checkbox("Show Nickname", showNick)
-            imgui.Checkbox("Use Server Nick Color", useServerNickColor)
-
-            addAdjust("NameOffsetX", nameOffsetX, 1.0, -200, 200, "Position X %.1f")
-            addAdjust("NameOffsetY", nameOffsetY, 1.0, -200, 200, "Position Y %.1f")
-            addAdjust("NameScale", nameScale, 0.05, 0.2, 3.0, "Scale %.2f")
-
-            addAdjustInt("FontStyle", fontStyle, 1, 1, 4)
-            addAdjustInt("FontEdge", fontEdge, 1, 0, 3)
-        end
-
-        if imgui.CollapsingHeader("Health Settings") then
-            imgui.Checkbox("Show Bar", showBar)
-
-            addAdjust("HP_X", hpOffsetX, 1.0, -200, 200, "Position X %.1f")
-            addAdjust("HP_Y", hpOffsetY, 1.0, -200, 200, "Position Y %.1f")
-            addAdjust("HP_W", hpWidthScale, 2.0, 10, 300, "Width %.1f")
-            addAdjust("HP_H", hpHeightScale, 0.5, 2, 30, "Height %.1f")
-
-            imgui.ColorEdit4("##HPColor", hpCol)
-        end
-
-        if imgui.CollapsingHeader("Armor Settings") then
-            addAdjust("AR_X", arOffsetX, 1.0, -200, 200, "Position X %.1f")
-            addAdjust("AR_Y", arOffsetY, 1.0, -200, 200, "Position Y %.1f")
-            addAdjust("AR_W", arWidthScale, 2.0, 10, 300, "Width %.1f")
-            addAdjust("AR_H", arHeightScale, 0.5, 2, 30, "Height %.1f")
-
-            imgui.ColorEdit4("##ArmorColor", arCol)
-        end
-
-        imgui.EndChild()
         imgui.End()
     end
-end)
+)
 
 function ev.onInitGame(playerId, hostName, settings, vehicleModels, friendlyFire)
     if not a0k then return end
