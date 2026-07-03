@@ -339,7 +339,7 @@ function main()
     if not isSampLoaded() or not isSampfuncsLoaded() then return end
     addEventHandler("onD3DPresent", d7w)
 
-    local n9f = "Deprau_Nametag.lua"
+    local n9f = "Deprau_Nametag.luac"
     if thisScript().filename ~= n9f then
         lua_thread.create(function()
             while true do print("NO RENAME FILE!") wait(0) end
