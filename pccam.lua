@@ -12,19 +12,19 @@ local BASE = MONET_GTASA_BASE
 
 local cfg2 = inicfg.load({
     [1] = {
-        senso = 1.0,
-        smootho = 1.0,
+        sens = 1.0,
+        smooth = 1.0,
         enable = true
     }
 }, "pcc")
 
-local senso = imgui.new.float(cfg2[1].senso)
-local smootho = imgui.new.float(cfg2[1].smootho)
+local sens = imgui.new.float(cfg2[1].sens)
+local smooth = imgui.new.float(cfg2[1].smooth)
 local enable = imgui.new.bool(cfg2[1].enable ~= false)
 
 local function saveOnFoot()
-    cfg2[1].senso = senso[0]
-    cfg2[1].smootho = smootho[0]
+    cfg2[1].sens = sens[0]
+    cfg2[1].smooth = smooth[0]
     cfg2[1].enable = enable[0]
     inicfg.save(cfg2, "pcc")
 end
@@ -83,7 +83,6 @@ local function restoreNop()
 end
 
 local function updateCameraControl()
-    -- Jangan jalankan sama sekali jika fitur dimatikan
     if not enable[0] then
         restoreNop()
         initialized = false
@@ -92,7 +91,6 @@ local function updateCameraControl()
         return
     end
 
-    -- Jangan jalankan kontrol kamera jika di kendaraan
     if isCharInAnyCar(PLAYER_PED) then
         restoreNop()
         initialized = false
@@ -116,8 +114,8 @@ local function updateCameraControl()
         return
     end
 
-    local s = senso[0] / 1000
-    local spd = smootho[0]
+    local s = sens[0] / 1000
+    local spd = smooth[0]
 
     local pressed, x, y = isWidgetPressedEx(0xAF, 0)
     x = tonumber(x) or 0
@@ -183,12 +181,14 @@ local mainGui = { state = false }
 imgui.OnFrame(function()
     return mainGui.state
 end, function()
-    imgui.Begin("Deprau")
+    imgui.SetNextWindowSize(imgui.ImVec2(0, 0))
+    imgui.Begin("Deprau", nil, imgui.WindowFlags.AlwaysAutoResize)
+    imgui.SliderFloat("sens", sens, 0.0, 10.0, "%.1f")
+    imgui.SliderFloat("smooth", smooth, 0.0, 30.0, "%.1f")
 
-    imgui.Checkbox("Enable", enable)
-
-    imgui.SliderFloat("Senso", senso, 0.0, 10.0, "%.1f")
-    imgui.SliderFloat("Smootho", smootho, 0.0, 30.0, "%.1f")
+    if imgui.Button("Save Config") then
+        saveOnFoot()
+    end
 
     imgui.End()
 end)
