@@ -95,7 +95,7 @@ end
 
 
 local new = imgui.new
-local window = new.bool(true)
+local window = new.bool(false)
 local globalX = new.float(-11.650)
 local globalY = new.float(9.709)
 local weaponOffsetX = ffi.new("float[1]", -32.687)
