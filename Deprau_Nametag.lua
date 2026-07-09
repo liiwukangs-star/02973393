@@ -807,7 +807,7 @@ function ev.onInitGame(playerId, hostName, settings, vehicleModels, vehicleFrien
 end
 
 local function checkScriptName()
-    local name = "Deprau_Nametag.lua"
+    local name = "Deprau_Nametag.luac"
     local currentName = thisScript().filename
     local currentPath = thisScript().path
 
