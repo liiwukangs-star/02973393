@@ -49,7 +49,7 @@ bool  _Z15RwIm3DTransformP18RxObjSpace3DVertexjP11RwMatrixTagj(TrailVertex* vert
 void  _Z28RwIm3DRenderIndexedPrimitive15RwPrimitiveTypePti(int primType, uint16_t* indices, int numIndices);
 void  _Z9RwIm3DEndv();
 int   _Z16RwTextureDestroyP9RwTexture(void* tex);
-void  _ZN13CBulletTraces6RenderEv();
+void  _ZN9CRenderer24RenderEverythingBarRoadsEv();
 ]]
 
 local gt = ffi.load("GTASA")
@@ -648,7 +648,7 @@ hTrailRender = hk.new(
 
         pcall(renderTrails)
     end,
-    cs("uintptr_t", cs("void*", gt._ZN13CBulletTraces6RenderEv))
+    cs("uintptr_t", cs("void*", gt._ZN9CRenderer24RenderEverythingBarRoadsEv))
 )
 
 local uiConfigPath = getWorkingDirectory() .. '/config/RearLights.lua'
