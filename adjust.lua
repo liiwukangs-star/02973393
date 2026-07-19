@@ -2,17 +2,15 @@ require('sa_renderfix')
 local memory  = require("memory")
 local imgui   = require("mimgui")
 local new     = imgui.new
-local jsoncfg = require("jsoncfg")
-local faicons = require('fAwesome6')
+local json    = require("dkjson")
+local io      = require("io")
 local ffi     = require("ffi")
 local gta     = ffi.load("GTASA")
 
-ffi.cdef[[
-    void _Z12AND_OpenLinkPKc(const char* link);
-]]
-function openLink(url) gta._Z12AND_OpenLinkPKc(url) end
+local CFG_DIR  = "config"
+local CFG_FILE = CFG_DIR .. "/adjustable.json"
+os.execute('mkdir -p ' .. CFG_DIR)
 
-local CONFIG_FILE = "adjustable.json"
 local defaultConfig = {
     widgets = {
         ATTACK           = {x=200,y=200,w=100,h=100,s=1.0},
@@ -32,96 +30,69 @@ local defaultConfig = {
     }
 }
 
-local config = jsoncfg.load(defaultConfig, CONFIG_FILE)
-if not config or not config.widgets then config = defaultConfig end
+local function loadConfig()
+    local file = io.open(CFG_FILE, "r")
+    if not file then return nil end
+    local content = file:read("*a")
+    file:close()
+    if not content or content == "" then return nil end
+    local data = json.decode(content)
+    if not data or not data.widgets then return nil end
+    return data
+end
 
-local function newWidget(name,data)
+local saveStatusTimer = 0
+local saveStatusText = ""
+
+local function saveConfig()
+    local out = { widgets = {} }
+    for k,v in pairs(widgets) do
+        out.widgets[k] = { x=v.x[0], y=v.y[0], w=v.w[0], h=v.h[0], s=v.s[0] }
+    end
+    local file = io.open(CFG_FILE, "w")
+    if file then
+        file:write(json.encode(out, { indent = true }))
+        file:close()
+        saveStatusText = "Tersimpan!"
+    else
+        saveStatusText = "Gagal menyimpan!"
+    end
+    saveStatusTimer = os.clock()
+end
+
+local loaded = loadConfig()
+local configExisted = loaded ~= nil
+local config = loaded or defaultConfig
+
+local function newWidget(name,data,needsCapture)
     return {
         name = name,
         x = imgui.new.float(data.x or 200),
         y = imgui.new.float(data.y or 200),
         w = imgui.new.float(data.w or 100),
         h = imgui.new.float(data.h or 100),
-        s = imgui.new.float(data.s or 1.0)
+        s = imgui.new.float(data.s or 1.0),
+        ptr = 0,
+        captured = not needsCapture,
     }
 end
 
-local widgets = {}
+widgets = {}
 for k,v in pairs(defaultConfig.widgets) do
-    widgets[k] = newWidget(k, config.widgets[k])
+    local data = (config.widgets and config.widgets[k]) or v
+    widgets[k] = newWidget(k, data, not configExisted)
 end
-
-function saveset()
-    for k,v in pairs(widgets) do
-        config.widgets[k] = {
-            x=v.x[0], y=v.y[0],
-            w=v.w[0], h=v.h[0],
-            s=v.s[0]
-        }
-    end
-    jsoncfg.save(config, CONFIG_FILE)
-    sampAddChatMessage('[Deprau] Save successful!', 0xFFFFFF)
-end
-
-local socket = require 'socket.http'
-local ltn12 = require 'ltn12'
-local lfs = require 'lfs'
-local faicons = require 'fAwesome6'
 
 local dpi = MONET_DPI_SCALE or 1
 local MDS = dpi * 1.0
-local BASE_DIR = getWorkingDirectory() .. '/lib/deprau'
-local FONT_DIR = BASE_DIR .. '/font'
-local FONT_PATH = FONT_DIR .. '/baflion-sans.black.otf'
-local FONT_URL = 'https://raw.githubusercontent.com/Kekenenehshsjjshs/Lakskebdudnsvshsue/refs/heads/main/baflion-sans.black.otf'
-
-local fontTitle, fontAwesome = nil, nil
-
-local function ensureDir(path)
-    if not lfs.attributes(path, "mode") then
-        pcall(lfs.mkdir, path)
-    end
-end
-
-local function safeDownload(url, path)
-    if doesFileExist(path) then return true end
-    local body, code = socket.request(url)
-    if code ~= 200 or not body then return false end
-    local f = io.open(path, "wb")
-    if not f then return false end
-    f:write(body)
-    f:close()
-    return true
-end
 
 imgui.OnInitialize(function()
-    local io = imgui.GetIO()
+    local io_ = imgui.GetIO()
     local style = imgui.GetStyle()
-    io.IniFilename = nil
-
-    ensureDir(getWorkingDirectory() .. '/lib')
-    ensureDir(BASE_DIR)
-    ensureDir(FONT_DIR)
-
-    safeDownload(FONT_URL, FONT_PATH)
-
-    if doesFileExist(FONT_PATH) then
-        fontTitle = io.Fonts:AddFontFromFileTTF(FONT_PATH, 15 * dpi)
-        io.Fonts:Build()
-    end
-
-    io.FontGlobalScale = MDS
+    io_.IniFilename = nil
+    io_.FontGlobalScale = MDS
     style:ScaleAllSizes(MDS)
-
-    local config = imgui.ImFontConfig()
-    config.MergeMode = true
-    config.PixelSnapH = true
-    local iconRanges = imgui.new.ImWchar[3](faicons.min_range, faicons.max_range, 0)
-    fontAwesome = io.Fonts:AddFontFromMemoryCompressedBase85TTF(
-        faicons.get_font_data_base85('solid'), 18, config, iconRanges
-    )
 end)
-
 
 local window = imgui.new.bool(false)
 
@@ -154,80 +125,77 @@ local function drawWidget(w)
         if w.buttonTimeH == nil then w.buttonTimeH=0 end
         if w.buttonTimeS == nil then w.buttonTimeS=0 end
 
-        imgui.SetNextItemWidth(180)
+        local sliderWidth = imgui.GetContentRegionAvail().x - 80
+
+        imgui.SetNextItemWidth(sliderWidth)
         imgui.SliderFloat("##x"..w.name, w.x, 0, 1000, "Pos X = %.0f")
         imgui.SameLine()
-        if imgui.Button("-##x"..w.name,imgui.ImVec2(33,30))then w.x[0]=w.x[0]-step w.buttonTimeX=os.clock() end
+        if imgui.Button("-##x"..w.name,imgui.ImVec2(28,28))then w.x[0]=w.x[0]-step w.buttonTimeX=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeX>=repeatInterval then w.x[0]=w.x[0]-step w.buttonTimeX=os.clock() end
         imgui.SameLine()
-        if imgui.Button("+##x"..w.name,imgui.ImVec2(33,30))then w.x[0]=w.x[0]+step w.buttonTimeX=os.clock() end
+        if imgui.Button("+##x"..w.name,imgui.ImVec2(28,28))then w.x[0]=w.x[0]+step w.buttonTimeX=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeX>=repeatInterval then w.x[0]=w.x[0]+step w.buttonTimeX=os.clock() end
 
-        imgui.SetNextItemWidth(180)
+        imgui.SetNextItemWidth(sliderWidth)
         imgui.SliderFloat("##y"..w.name, w.y, 0, 1000, "Pos Y = %.0f")
         imgui.SameLine()
-        if imgui.Button("-##y"..w.name,imgui.ImVec2(33,30))then w.y[0]=w.y[0]-step w.buttonTimeY=os.clock() end
+        if imgui.Button("-##y"..w.name,imgui.ImVec2(28,28))then w.y[0]=w.y[0]-step w.buttonTimeY=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeY>=repeatInterval then w.y[0]=w.y[0]-step w.buttonTimeY=os.clock() end
         imgui.SameLine()
-        if imgui.Button("+##y"..w.name,imgui.ImVec2(33,30))then w.y[0]=w.y[0]+step w.buttonTimeY=os.clock() end
+        if imgui.Button("+##y"..w.name,imgui.ImVec2(28,28))then w.y[0]=w.y[0]+step w.buttonTimeY=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeY>=repeatInterval then w.y[0]=w.y[0]+step w.buttonTimeY=os.clock() end
 
-        imgui.SetNextItemWidth(180)
+        imgui.SetNextItemWidth(sliderWidth)
         imgui.SliderFloat("##w"..w.name, w.w, 1, 500, "Width = %.0f")
         imgui.SameLine()
-        if imgui.Button("-##w"..w.name,imgui.ImVec2(33,30))then w.w[0]=w.w[0]-step w.buttonTimeW=os.clock() end
+        if imgui.Button("-##w"..w.name,imgui.ImVec2(28,28))then w.w[0]=w.w[0]-step w.buttonTimeW=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeW>=repeatInterval then w.w[0]=w.w[0]-step w.buttonTimeW=os.clock() end
         imgui.SameLine()
-        if imgui.Button("+##w"..w.name,imgui.ImVec2(33,30))then w.w[0]=w.w[0]+step w.buttonTimeW=os.clock() end
+        if imgui.Button("+##w"..w.name,imgui.ImVec2(28,28))then w.w[0]=w.w[0]+step w.buttonTimeW=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeW>=repeatInterval then w.w[0]=w.w[0]+step w.buttonTimeW=os.clock() end
 
-        imgui.SetNextItemWidth(180)
+        imgui.SetNextItemWidth(sliderWidth)
         imgui.SliderFloat("##h"..w.name, w.h, 1, 500, "Height = %.0f")
         imgui.SameLine()
-        if imgui.Button("-##h"..w.name,imgui.ImVec2(33,30))then w.h[0]=w.h[0]-step w.buttonTimeH=os.clock() end
+        if imgui.Button("-##h"..w.name,imgui.ImVec2(28,28))then w.h[0]=w.h[0]-step w.buttonTimeH=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeH>=repeatInterval then w.h[0]=w.h[0]-step w.buttonTimeH=os.clock() end
         imgui.SameLine()
-        if imgui.Button("+##h"..w.name,imgui.ImVec2(33,30))then w.h[0]=w.h[0]+step w.buttonTimeH=os.clock() end
+        if imgui.Button("+##h"..w.name,imgui.ImVec2(28,28))then w.h[0]=w.h[0]+step w.buttonTimeH=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeH>=repeatInterval then w.h[0]=w.h[0]+step w.buttonTimeH=os.clock() end
 
-        imgui.SetNextItemWidth(180)
+        imgui.SetNextItemWidth(sliderWidth)
         imgui.SliderFloat("##s"..w.name, w.s, 0.1, 5, "Scale = %.2f")
         imgui.SameLine()
-        if imgui.Button("-##s"..w.name,imgui.ImVec2(33,30))then w.s[0]=w.s[0]-scaleStep w.buttonTimeS=os.clock() end
+        if imgui.Button("-##s"..w.name,imgui.ImVec2(28,28))then w.s[0]=w.s[0]-scaleStep w.buttonTimeS=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeS>=repeatInterval then w.s[0]=w.s[0]-scaleStep w.buttonTimeS=os.clock() end
         imgui.SameLine()
-        if imgui.Button("+##s"..w.name,imgui.ImVec2(33,30))then w.s[0]=w.s[0]+scaleStep w.buttonTimeS=os.clock() end
+        if imgui.Button("+##s"..w.name,imgui.ImVec2(28,28))then w.s[0]=w.s[0]+scaleStep w.buttonTimeS=os.clock() end
         if imgui.IsItemActive()and os.clock()-w.buttonTimeS>=repeatInterval then w.s[0]=w.s[0]+scaleStep w.buttonTimeS=os.clock() end
     end
 end
 
-local autoHeight = imgui.new.float(0)
+local autoHeight = imgui.new.float(300)
 local onFootWidgets = {"ATTACK","ANALOG","VC_SHOOT_ALT","VC_SHOOT","ENTER_TARGETING","SPRINT","RADAR","PLAYER_INFO"}
 local inCarWidgets = {"HORN","ACCELERATE","ENTER_CAR","BRAKE","HAND_BRAKE","REPLAY"}
 
 imgui.OnFrame(function() return window[0] end,function()
     darkgreentheme()
-    local winWidth = 460*MDS
+    local winWidth = 520*MDS
     imgui.SetNextWindowSize(imgui.ImVec2(winWidth, autoHeight[0]), imgui.Cond.Always)
-    if imgui.BeginCustomTitle("Customizable Widget Controller",26*MDS,window,
-        imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoScrollbar) then
-        
-local url = "https://youtube.com/@deprauu"
-local windowWidth = imgui.GetWindowSize().x
-local textWidth = imgui.CalcTextSize(url).x
-local offsetX = 105
+    if imgui.Begin("Deprau - Customizable Widget Controller", window, imgui.WindowFlags.NoCollapse) then
 
-local scale = 0.7
-imgui.SetWindowFontScale(scale)
-imgui.SetCursorPosX(windowWidth - textWidth - offsetX)  
-imgui.TextColored(imgui.ImVec4(0.90, 0.90, 0.80, 1.00), url)
-imgui.SetWindowFontScale(1.0)
+        if imgui.Button("Save") then
+            saveConfig()
+        end
 
-if imgui.IsItemClicked() then
-    openLink(url)
-end
-        local childWidth = (winWidth-20)/2
-        local childHeight = 0
+        if saveStatusText ~= "" and os.clock()-saveStatusTimer < 2 then
+            imgui.SameLine()
+            imgui.TextColored(imgui.ImVec4(0.3,1,0.3,1), saveStatusText)
+        end
+
+        local childWidth = (winWidth-imgui.GetStyle().WindowPadding.x*2-10)/2
+        local childHeight = imgui.GetWindowSize().y - imgui.GetCursorPosY() - imgui.GetStyle().WindowPadding.y
+
         imgui.BeginChild("OnFootChild",imgui.ImVec2(childWidth,childHeight),true)
         imgui.SetCursorPosX((childWidth-imgui.CalcTextSize("OnFoot").x)*0.5)
         imgui.Text("OnFoot")
@@ -235,7 +203,9 @@ end
         for _,name in ipairs(onFootWidgets) do drawWidget(widgets[name]) end
         local leftEndY = imgui.GetCursorPosY()
         imgui.EndChild()
+
         imgui.SameLine()
+
         imgui.BeginChild("InCarChild",imgui.ImVec2(childWidth,childHeight),true)
         imgui.SetCursorPosX((childWidth-imgui.CalcTextSize("InVehicle").x)*0.5)
         imgui.Text("InVehicle")
@@ -243,50 +213,64 @@ end
         for _,name in ipairs(inCarWidgets) do drawWidget(widgets[name]) end
         local rightEndY = imgui.GetCursorPosY()
         imgui.EndChild()
-        autoHeight[0] = math.max(leftEndY,rightEndY)+(28*MDS)+40
-        imgui.End()
-        imgui.PopStyleVar(2)
+
+        autoHeight[0] = math.max(leftEndY,rightEndY) + imgui.GetCursorPosY() - childHeight + (imgui.GetStyle().WindowPadding.y*0) + 0
     end
+    imgui.End()
 end)
 
 local function apply(w, ptr)
-    if ptr==0 then return end
+    w.ptr = ptr or 0
+    if ptr==0 or ptr==nil then return end
+
+    if not w.captured then
+        local cx = memory.getfloat(ptr+0xC,false)
+        local cy = memory.getfloat(ptr+0x10,false)
+        local cw = memory.getfloat(ptr+0x14,false)
+        local ch = memory.getfloat(ptr+0x18,false)
+        if cx then w.x[0] = cx end
+        if cy then w.y[0] = cy end
+        if cw then w.w[0] = cw end
+        if ch then w.h[0] = ch end
+        w.s[0] = 1.0
+        w.captured = true
+        return
+    end
+
     memory.setfloat(ptr+0xC,w.x[0],false)
     memory.setfloat(ptr+0x10,w.y[0],false)
     memory.setfloat(ptr+0x14,w.w[0]*w.s[0],false)
     memory.setfloat(ptr+0x18,w.h[0]*w.s[0],false)
 end
 
-local function getWidgets()
-    local ptr = memory.getuint32(MONET_GTASA_BASE + 0x67947C,false)
-    return ptr~=0 and ptr or nil
-end
+local map = {
+    {1,widgets.ATTACK},
+    {19,widgets.ENTER_TARGETING},{20,widgets.ENTER_TARGETING},
+    {21,widgets.VC_SHOOT},{22,widgets.VC_SHOOT_ALT},
+    {31,widgets.SPRINT},
+    {0,widgets.ENTER_CAR},
+    {2,widgets.ACCELERATE},{3,widgets.BRAKE},
+    {4,widgets.HAND_BRAKE},
+    {7,widgets.HORN},
+    {18,widgets.REPLAY},
+    {160,widgets.PLAYER_INFO},
+    {161,widgets.RADAR},
+    {167,widgets.ANALOG},
+}
+
+imgui.OnFrame(function() return true end, function()
+    local base = memory.getuint32(MONET_GTASA_BASE + 0x67947C, false)
+    if base == 0 then return end
+    for _,v in pairs(map) do
+        local ptr = memory.getuint32(base+v[1]*4,false)
+        apply(v[2],ptr)
+    end
+end)
 
 function main()
     repeat wait(100) until isSampAvailable()
     sampRegisterChatCommand("adjust",function() window[0]=not window[0] end)
-    local base = getWidgets()
-    local map = {
-        {1,widgets.ATTACK},
-        {19,widgets.ENTER_TARGETING},{20,widgets.ENTER_TARGETING},
-        {21,widgets.VC_SHOOT},{22,widgets.VC_SHOOT_ALT},
-        {31,widgets.SPRINT},
-        {0,widgets.ENTER_CAR},
-        {2,widgets.ACCELERATE},{3,widgets.BRAKE},
-        {4,widgets.HAND_BRAKE},
-        {7,widgets.HORN},
-        {18,widgets.REPLAY},
-        {160,widgets.PLAYER_INFO},
-        {161,widgets.RADAR},
-        {167,widgets.ANALOG},
-    }
-    while true do
-        wait(0)
-        for _,v in pairs(map) do
-            local ptr = memory.getuint32(base+v[1]*4,false)
-            apply(v[2],ptr)
-        end
-    end
+    wait(-1)
 end
 
 function darkgreentheme()
@@ -297,7 +281,7 @@ function darkgreentheme()
     style.Alpha = 1
     style.WindowPadding = imgui.ImVec2(15, 15)
     style.WindowRounding = 15
-    style.WindowBorderSize = 20
+    style.WindowBorderSize = 1
     style.WindowMinSize = imgui.ImVec2(32, 32)
     style.WindowTitleAlign = imgui.ImVec2(0.5, 0.5)
     style.ChildRounding = 15
@@ -314,104 +298,4 @@ function darkgreentheme()
     style.ScrollbarSize = 14
     style.ScrollbarRounding = 10
     style.TabRounding = 12
-
-    colors[clr.Text]                 = imgui.ImVec4(0.90, 0.90, 0.80, 1.00)
-    colors[clr.TextDisabled]         = imgui.ImVec4(0.60, 0.50, 0.50, 1.00)
-    colors[clr.WindowBg]             = imgui.ImVec4(0.10, 0.10, 0.10, 1.00)
-    colors[clr.ChildBg]              = imgui.ImVec4(0.12, 0.12, 0.12, 1.00)
-    colors[clr.PopupBg]              = imgui.ImVec4(0.12, 0.12, 0.12, 1.00)
-    colors[clr.Border]               = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-    colors[clr.FrameBg]              = imgui.ImVec4(0.20, 0.20, 0.20, 1.00)
-    colors[clr.FrameBgHovered]       = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-    colors[clr.FrameBgActive]        = imgui.ImVec4(0.25, 0.25, 0.25, 1.00)
-    colors[clr.TitleBg]              = imgui.ImVec4(0.15, 0.15, 0.15, 1.00)
-    colors[clr.TitleBgCollapsed]     = imgui.ImVec4(0.10, 0.10, 0.10, 1.00)
-    colors[clr.TitleBgActive]        = imgui.ImVec4(0.20, 0.20, 0.20, 1.00)
-    colors[clr.SliderGrab]           = imgui.ImVec4(0.66, 0.66, 0.66, 1.00)
-    colors[clr.SliderGrabActive]     = imgui.ImVec4(0.70, 0.70, 0.73, 1.00)
-    colors[clr.Button]               = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-    colors[clr.ButtonHovered]        = imgui.ImVec4(0.40, 0.40, 0.40, 1.00)
-    colors[clr.ButtonActive]         = imgui.ImVec4(0.50, 0.50, 0.50, 1.00)
-    colors[clr.Header]               = imgui.ImVec4(0.20, 0.20, 0.20, 1.00)
-    colors[clr.HeaderHovered]        = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-    colors[clr.HeaderActive]         = imgui.ImVec4(0.25, 0.25, 0.25, 1.00)    
-end
-
-function imgui.BeginCustomTitle(title, titleSizeY, var, flags, titleOffsetX, titleOffsetY)
-    titleOffsetX = titleOffsetX or 10
-    titleOffsetY = titleOffsetY or 2
-
-    imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, imgui.ImVec2(5,5))
-    imgui.PushStyleVarFloat(imgui.StyleVar.WindowBorderSize, 0)
-
-    local opened = imgui.Begin(title, var, imgui.WindowFlags.NoTitleBar + (flags or 0))
-    if opened then
-        local style = imgui.GetStyle()
-        local p = imgui.GetWindowPos()
-        local size = imgui.GetWindowSize()
-        local dl = imgui.GetWindowDrawList()
-
-        dl:AddRectFilled(p, imgui.ImVec2(p.x + size.x, p.y + titleSizeY),
-            imgui.GetColorU32Vec4(imgui.ImVec4(0.20,0.20,0.20,1)), style.WindowRounding, 3)
-
-        local textSize
-        if fontTitle then imgui.PushFont(fontTitle); textSize = imgui.CalcTextSize(title); imgui.PopFont()
-        else textSize = imgui.CalcTextSize(title) end
-
-        local textPos = imgui.ImVec2(p.x + titleOffsetX, p.y + titleSizeY - textSize.y - titleOffsetY)
-
-        local offsets = {
-            imgui.ImVec2(-1,-1), imgui.ImVec2(-1,1),
-            imgui.ImVec2(1,-1),  imgui.ImVec2(1,1)
-        }
-
-        if fontTitle then imgui.PushFont(fontTitle) end
-        for _, offset in ipairs(offsets) do
-            dl:AddText(imgui.ImVec2(textPos.x + offset.x, textPos.y + offset.y),
-                imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)), title)
-        end
-        dl:AddText(textPos, imgui.GetColorU32Vec4(imgui.ImVec4(0.90,0.90,0.80,1)), title)
-        if fontTitle then imgui.PopFont() end
-
-        local radius = titleSizeY * 0.36
-        local padding = 6
-        local yOffset = 0
-        local closeCenter = imgui.ImVec2(p.x + size.x - radius - padding, p.y + titleSizeY/2 - yOffset)
-        local closeHovered = imgui.IsMouseHoveringRect(
-            imgui.ImVec2(closeCenter.x - radius, closeCenter.y - radius),
-            imgui.ImVec2(closeCenter.x + radius, closeCenter.y + radius)
-        )
-        if closeHovered and imgui.IsMouseClicked(0) then var[0] = false end
-        dl:AddCircleFilled(closeCenter, radius,
-            imgui.GetColorU32Vec4(closeHovered and imgui.ImVec4(0.50,0.50,0.50,1) or imgui.ImVec4(0.30,0.30,0.30,1)), 32)
-        dl:AddCircle(closeCenter, radius, imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)), 32, 2)
-
-        local saveOffset = imgui.ImVec2(-radius*2 - padding, 0)
-        local saveCenter = imgui.ImVec2(closeCenter.x + saveOffset.x, closeCenter.y)
-        local saveHovered = imgui.IsMouseHoveringRect(
-            imgui.ImVec2(saveCenter.x - radius, saveCenter.y - radius),
-            imgui.ImVec2(saveCenter.x + radius, saveCenter.y + radius)
-        )
-        if saveHovered and imgui.IsMouseClicked(0) then saveset() end
-
-        if fontAwesome then imgui.PushFont(fontAwesome) end
-        local iconText = faicons('FLOPPY_DISK')
-        local iconSize = imgui.CalcTextSize(iconText)
-        local iconPos = imgui.ImVec2(saveCenter.x - iconSize.x/2, saveCenter.y - iconSize.y/2 + 1.9)
-
-        local iconStrokeOffsets = {
-            imgui.ImVec2(-1,-1), imgui.ImVec2(-1,1),
-            imgui.ImVec2(1,-1),  imgui.ImVec2(1,1)
-        }
-
-        for _, offset in ipairs(iconStrokeOffsets) do
-            dl:AddText(imgui.ImVec2(iconPos.x + offset.x, iconPos.y + offset.y),
-                imgui.GetColorU32Vec4(imgui.ImVec4(0,0,0,1)), iconText)
-        end
-        dl:AddText(iconPos, imgui.GetColorU32Vec4(imgui.ImVec4(0.90,0.90,0.80,1)), iconText)
-        if fontAwesome then imgui.PopFont() end
-
-        imgui.SetCursorPosY(titleSizeY + 10)
-    end
-    return opened
 end
